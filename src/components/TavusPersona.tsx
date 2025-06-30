@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Play, Mic, MicOff } from "lucide-react";
 
 interface TavusPersonaProps {
   persona: {
@@ -23,71 +23,94 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isMicEnabled, setIsMicEnabled] = useState(false);
 
   useEffect(() => {
-    initializeTavusPersona();
-  }, [persona.persona_id, persona.replica_id]);
+    if (isActive) {
+      initializeTavusPersona();
+    }
+  }, [persona.persona_id, persona.replica_id, isActive]);
 
   const initializeTavusPersona = async () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      // Initialize Tavus persona with API call
-      const response = await fetch(`https://api.tavus.io/v2/personas/${persona.persona_id}/start`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": "ad5d3448d9d24478b8d2175b9b4a821e"
-        },
-        body: JSON.stringify({
-          "replica_id": persona.replica_id,
-          "context": {
-            "user_name": "Candidate",
-            "interview_domain": context?.domain || "general",
-            "current_question_index": context?.questionIndex || 0,
-            "persona_name": persona.name
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to initialize persona: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log("🎤 Tavus persona initialized:", data);
       
-      // Load the Tavus embed
+      console.log(`🎤 Initializing Tavus persona: ${persona.name}`);
+      
+      // Instead of making API calls, directly load the embed
+      // This bypasses CORS issues by using the embed URL directly
       loadTavusEmbed();
-      setIsConnected(true);
       
     } catch (err) {
       console.error("❌ Tavus initialization error:", err);
       setError(err instanceof Error ? err.message : "Failed to initialize AI persona");
-    } finally {
       setIsLoading(false);
     }
   };
 
   const loadTavusEmbed = () => {
     if (iframeRef.current) {
-      const embedUrl = `https://embed.tavus.io/persona/${persona.persona_id}/replica/${persona.replica_id}`;
+      // Create the embed URL with context parameters
+      const baseUrl = `https://embed.tavus.io/${persona.persona_id}`;
+      const params = new URLSearchParams({
+        replica_id: persona.replica_id,
+        user_name: "Candidate",
+        domain: context?.domain || "general",
+        question_index: context?.questionIndex?.toString() || "0",
+        persona_name: persona.name
+      });
+      
+      const embedUrl = `${baseUrl}?${params.toString()}`;
+      
+      console.log("🔗 Loading Tavus embed:", embedUrl);
+      
       iframeRef.current.src = embedUrl;
       
+      // Set up iframe event listeners
       iframeRef.current.onload = () => {
+        console.log("✅ Tavus persona loaded successfully");
         setIsLoading(false);
+        setIsConnected(true);
       };
       
-      iframeRef.current.onerror = () => {
+      iframeRef.current.onerror = (event) => {
+        console.error("❌ Iframe loading error:", event);
         setError("Failed to load AI persona interface");
         setIsLoading(false);
       };
+
+      // Fallback timeout in case onload doesn't fire
+      setTimeout(() => {
+        if (isLoading) {
+          setIsLoading(false);
+          setIsConnected(true);
+        }
+      }, 5000);
     }
   };
 
   const handleRetry = () => {
+    setError(null);
     initializeTavusPersona();
+  };
+
+  const toggleMicrophone = async () => {
+    try {
+      if (!isMicEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setIsMicEnabled(true);
+        console.log("🎙️ Microphone enabled");
+        // Store stream reference if needed
+        stream.getTracks().forEach(track => track.stop()); // Stop immediately, just checking permission
+      } else {
+        setIsMicEnabled(false);
+        console.log("🔇 Microphone disabled");
+      }
+    } catch (err) {
+      console.error("❌ Microphone access error:", err);
+      setError("Microphone access denied. Please enable microphone permissions.");
+    }
   };
 
   if (error) {
@@ -98,9 +121,15 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
           <div>
             <h3 className="font-semibold text-gray-900 mb-2">Connection Error</h3>
             <p className="text-sm text-gray-600 mb-4">{error}</p>
-            <Button onClick={handleRetry} variant="outline">
-              Try Again
-            </Button>
+            <div className="space-x-2">
+              <Button onClick={handleRetry} variant="outline">
+                Try Again
+              </Button>
+              <Button onClick={toggleMicrophone} variant="outline">
+                <Mic className="h-4 w-4 mr-2" />
+                Enable Mic
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -115,11 +144,26 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
           <div className="text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
             <p className="text-sm text-gray-600">
-              Initializing {persona.name}...
+              Loading {persona.name}...
+            </p>
+            <p className="text-xs text-gray-500">
+              Please allow microphone access when prompted
             </p>
           </div>
         </div>
       )}
+      
+      {/* Controls */}
+      <div className="absolute top-4 left-4 z-20 flex space-x-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={toggleMicrophone}
+          className={`bg-white/90 ${isMicEnabled ? 'text-green-600' : 'text-gray-600'}`}
+        >
+          {isMicEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+        </Button>
+      </div>
       
       {/* Tavus Embed */}
       <div className={`transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-50'}`}>
@@ -127,7 +171,8 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
           ref={iframeRef}
           title={`${persona.name} - AI Interviewer`}
           className="w-full h-96 rounded-lg border-0"
-          allow="camera; microphone; autoplay; encrypted-media; fullscreen"
+          allow="camera; microphone; autoplay; encrypted-media; fullscreen; display-capture"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
           style={{
             minHeight: '400px',
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
@@ -142,9 +187,18 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
             ? 'bg-green-100 text-green-800' 
             : 'bg-yellow-100 text-yellow-800'
         }`}>
-          {isConnected ? '🟢 Connected' : '🟡 Connecting...'}
+          {isConnected ? '🟢 Connected' : '🟡 Loading...'}
         </div>
       </div>
+
+      {/* Instructions */}
+      {isConnected && (
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+          <p className="text-sm text-blue-800">
+            <strong>Ready to start!</strong> Make sure your microphone is enabled and speak clearly with {persona.name}.
+          </p>
+        </div>
+      )}
     </div>
   );
 };
