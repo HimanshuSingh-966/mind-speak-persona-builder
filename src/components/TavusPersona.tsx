@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, Play, Mic, MicOff } from "lucide-react";
+import { Loader2, AlertCircle, Mic, MicOff } from "lucide-react";
 
 interface TavusPersonaProps {
   persona: {
@@ -13,7 +13,7 @@ interface TavusPersonaProps {
   isActive: boolean;
   context?: {
     domain: string;
-    currentQuestion: any;
+    questions: any[];
     questionIndex: number;
   };
 }
@@ -38,8 +38,7 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
       
       console.log(`🎤 Initializing Tavus persona: ${persona.name}`);
       
-      // Instead of making API calls, directly load the embed
-      // This bypasses CORS issues by using the embed URL directly
+      // Load the embed with question context
       loadTavusEmbed();
       
     } catch (err) {
@@ -51,14 +50,16 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
 
   const loadTavusEmbed = () => {
     if (iframeRef.current) {
-      // Create the embed URL with context parameters
+      // Create the embed URL with questions as context
       const baseUrl = `https://embed.tavus.io/${persona.persona_id}`;
       const params = new URLSearchParams({
         replica_id: persona.replica_id,
         user_name: "Candidate",
         domain: context?.domain || "general",
-        question_index: context?.questionIndex?.toString() || "0",
-        persona_name: persona.name
+        persona_name: persona.name,
+        // Pass questions as context so persona can ask them
+        questions: JSON.stringify(context?.questions || []),
+        total_questions: context?.questions?.length?.toString() || "0"
       });
       
       const embedUrl = `${baseUrl}?${params.toString()}`;
@@ -80,7 +81,7 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
         setIsLoading(false);
       };
 
-      // Fallback timeout in case onload doesn't fire
+      // Fallback timeout
       setTimeout(() => {
         if (isLoading) {
           setIsLoading(false);
@@ -101,8 +102,7 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setIsMicEnabled(true);
         console.log("🎙️ Microphone enabled");
-        // Store stream reference if needed
-        stream.getTracks().forEach(track => track.stop()); // Stop immediately, just checking permission
+        stream.getTracks().forEach(track => track.stop());
       } else {
         setIsMicEnabled(false);
         console.log("🔇 Microphone disabled");
@@ -170,11 +170,11 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
         <iframe
           ref={iframeRef}
           title={`${persona.name} - AI Interviewer`}
-          className="w-full h-96 rounded-lg border-0"
+          className="w-full h-[600px] rounded-lg border-0"
           allow="camera; microphone; autoplay; encrypted-media; fullscreen; display-capture"
           sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
           style={{
-            minHeight: '400px',
+            minHeight: '600px',
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
           }}
         />
@@ -193,10 +193,14 @@ const TavusPersona: React.FC<TavusPersonaProps> = ({ persona, isActive, context 
 
       {/* Instructions */}
       {isConnected && (
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-          <p className="text-sm text-blue-800">
-            <strong>Ready to start!</strong> Make sure your microphone is enabled and speak clearly with {persona.name}.
-          </p>
+        <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+          <h4 className="font-semibold text-blue-900 mb-2">Interview Instructions</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• {persona.name} will ask you {context?.questions?.length || 0} questions</li>
+            <li>• Speak clearly and naturally</li>
+            <li>• Take your time to think before answering</li>
+            <li>• The AI will guide you through each question</li>
+          </ul>
         </div>
       )}
     </div>
